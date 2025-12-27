@@ -101,11 +101,118 @@ f.	Agregar productos: Utilizar la instancia la clase 'Order', del paso c y llama
 
 
 """
-#Write your code here
-from users import *
 
-    
+from datetime import datetime
+from util.file_manager import CSVFileManager
+from util.converter import CashierConverter, CustomerConverter, ProductConverter
+from orders.order import Order
+
+
 class PrepareOrder:
- #Write your code here
- pass
+    """Class to integrate the system and prepare customer orders."""
 
+    def __init__(self, data_path='data/'):
+        """Initialize and read CSV files, converting them to object lists."""
+        self.data_path = data_path
+
+        # Load cashiers
+        df_cashiers = CSVFileManager(f"{data_path}cashiers.csv").read()
+        self.cashiers = CashierConverter().convert(df_cashiers)
+
+        # Load customers
+        df_customers = CSVFileManager(f"{data_path}customers.csv").read()
+        self.customers = CustomerConverter().convert(df_customers)
+
+        # Load products
+        self.products = []
+        for product_file, product_type in [
+            ('hamburgers.csv', 'Hamburger'),
+            ('sodas.csv', 'Soda'),
+            ('drinks.csv', 'Drink'),
+            ('happyMeal.csv', 'HappyMeal')
+        ]:
+            df = CSVFileManager(f"{data_path}{product_file}").read()
+            self.products.extend(ProductConverter().convert(df, product_type))
+
+    def find_cashier(self, dni: str):
+        """Return a Cashier object matching the given DNI."""
+        for cashier in self.cashiers:
+            if cashier.dni == dni:
+                return cashier
+        return None
+
+    def find_customer(self, dni: str):
+        """Return a Customer object matching the given DNI."""
+        for customer in self.customers:
+            if customer.dni == dni:
+                return customer
+        return None
+
+    def list_products(self):
+        """Print the list of available products."""
+        for product in self.products:
+            print(product.describe())
+
+    def select_products(self):
+        """Allow user to select products by ID and return a list of Product objects."""
+        selected_products = []
+        while True:
+            product_id = input("Enter product ID: ").strip()
+            product = next((p for p in self.products if p.id == product_id), None)
+            if product:
+                selected_products.append(product)
+                print(f"Added: {product.describe()}")
+            else:
+                print("Product not found. Try again.")
+            
+            cont = input("Do you want to add another product? (Yes/No): ").strip().lower()
+            if cont != 'yes':
+                break
+        return selected_products
+
+    def create_order(self):
+        """Create an order by selecting cashier, customer, and products, then return the Order object."""
+        # Select cashier
+        while True:
+            dni = input("Enter cashier DNI: ").strip()
+            cashier = self.find_cashier(dni)
+            if cashier:
+                print(cashier.describe())
+                break
+            print("Cashier not found. Try again.")
+
+        # Select customer
+        while True:
+            dni = input("Enter customer DNI: ").strip()
+            customer = self.find_customer(dni)
+            if customer:
+                print(customer.describe())
+                break
+            print("Customer not found. Try again.")
+
+        # Select products
+        self.list_products()
+        products = self.select_products()
+
+        # Create Order
+        order = Order(cashier, customer)
+        for p in products:
+            order.add(p)
+
+        # Show order
+        order.show()
+        return order
+
+    def save_order_to_csv(self, order: Order, output_file='orders/output_orders.csv'):
+        """Save the order to a CSV file."""
+        import pandas as pd
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        data = {
+            'cashier_dni': [order.cashier.dni],
+            'customer_dni': [order.customer.dni],
+            'datetime': [now],
+            'total': [order.calculateTotal()]
+        }
+        df = pd.DataFrame(data)
+        CSVFileManager(output_file).write(df)
+        print(f"Order saved to {output_file}")
